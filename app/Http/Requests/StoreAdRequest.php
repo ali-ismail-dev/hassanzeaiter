@@ -7,11 +7,17 @@ use Illuminate\Validation\Rule;
 use App\Models\Category;
 use App\Models\CategoryField;
 
-
 class StoreAdRequest extends FormRequest
 {
     /**
+     * The loaded category (if available).
+     */
+    private ?Category $category = null;
+
+    /**
      * Determine if the user is authorized to make this request.
+     *
+     * Note: actual route protection should be done via Sanctum middleware.
      */
     public function authorize(): bool
     {
@@ -20,6 +26,8 @@ class StoreAdRequest extends FormRequest
 
     /**
      * Get the validation rules that apply to the request.
+     *
+     * Base ad fields + dynamically generated rules for category fields.
      */
     public function rules(): array
     {
@@ -39,6 +47,12 @@ class StoreAdRequest extends FormRequest
 
     /**
      * Get dynamic validation rules based on the selected category.
+     *
+     * Returns a rules array compatible with Laravel Validator, e.g.:
+     * [
+     *   'fields.make' => ['required','integer'],
+     *   'fields.amenities.*' => ['integer', Rule::exists(...)]
+     * ]
      */
     private function getDynamicFieldRules(): array
     {
@@ -55,11 +69,10 @@ class StoreAdRequest extends FormRequest
         }
 
         foreach ($this->category->fields as $field) {
-            // choose canonical key used in payload: prefer external_id, fallback to name or id
-            $fieldKey = $field->external_id ?: $field->name ?: $field->id;
+            // canonical key used in payload
+            $fieldKey = $this->getFieldKey($field);
 
-            // buildRulesForField now returns an associative array of top-level rules:
-            // e.g. ['fields.make' => ['required','string'], 'fields.amenities.*' => ['integer']]
+            // buildRulesForField returns associative map of rules
             $fieldRulesMap = $this->buildRulesForField($field, $fieldKey);
 
             // merge into main rules array
@@ -71,14 +84,18 @@ class StoreAdRequest extends FormRequest
 
     /**
      * Build validation rules for a specific category field.
-     * Returns an associative array of ruleKey => rulesArray
+     * Returns an associative array: ruleKey => rulesArray
+     *
+     * @param  CategoryField  $field
+     * @param  string  $fieldKey
+     * @return array
      */
-    private function buildRulesForField(\App\Models\CategoryField $field, string $fieldKey): array
+    private function buildRulesForField(CategoryField $field, string $fieldKey): array
     {
         $map = [];
         $baseKey = "fields.{$fieldKey}";
 
-        // Required or nullable
+        // Base rules: required vs nullable
         $baseRules = [];
         if ($field->is_required) {
             $baseRules[] = 'required';
@@ -94,7 +111,7 @@ class StoreAdRequest extends FormRequest
                 break;
 
             case 'number':
-                // numeric handles integers & decimals; use integer only if you know it's integer
+                // Use numeric to accept ints/decimals; if you need integer-only, change to integer
                 $baseRules[] = 'numeric';
                 break;
 
@@ -114,28 +131,29 @@ class StoreAdRequest extends FormRequest
 
             case 'select':
             case 'radio':
-                // single option: expecting the option ID
+                // single selected option -> expect option id that exists for this field
                 $baseRules[] = 'integer';
                 $baseRules[] = Rule::exists('category_field_options', 'id')->where('category_field_id', $field->id);
                 break;
 
             case 'checkbox':
-                // For checkbox we need two rules: one for the array and one for each element
+                // For checkbox we need two rules: one for the array, and one for each element
                 $map[$baseKey] = $field->is_required ? array_merge($baseRules, ['array', 'min:1']) : array_merge($baseRules, ['array']);
-                // element rules:
+
+                // element rules: each element must be an integer option id that belongs to this field
                 $elementKey = $baseKey . '.*';
                 $map[$elementKey] = [
                     'integer',
                     Rule::exists('category_field_options', 'id')->where('category_field_id', $field->id),
                 ];
 
-                // Add custom rules to baseKey if present (rare for checkboxes)
+                // Add custom rules to the base array if present (rare for checkboxes)
                 if (!empty($field->validation_rules)) {
                     $custom = explode('|', $field->validation_rules);
                     $map[$baseKey] = array_merge($map[$baseKey], $custom);
                 }
 
-                return $map; // we've already set both keys
+                return $map;
         }
 
         // Add custom validation rules from field definition (for non-checkbox)
@@ -148,9 +166,28 @@ class StoreAdRequest extends FormRequest
         return $map;
     }
 
+    /**
+     * Compute the canonical payload key for a category field.
+     * Preference order: external_id -> name -> id
+     */
+    private function getFieldKey(CategoryField $field): string
+    {
+        if (!empty($field->external_id)) {
+            return (string) $field->external_id;
+        }
+
+        if (!empty($field->name)) {
+            // sanitize name (optional) - keep as-is to match seed payloads
+            return (string) $field->name;
+        }
+
+        return (string) $field->id;
+    }
 
     /**
      * Get custom attributes for validator errors.
+     *
+     * Use the same canonical keys as the rules so messages show friendly labels.
      */
     public function attributes(): array
     {
@@ -161,10 +198,12 @@ class StoreAdRequest extends FormRequest
             'price' => 'price',
         ];
 
-        // Add friendly names for dynamic fields
         if ($this->category) {
             foreach ($this->category->fields as $field) {
-                $attributes["fields.{$field->name}"] = $field->label;
+                $key = $this->getFieldKey($field);
+                $attributes["fields.{$key}"] = $field->label ?? $field->name ?? $key;
+                // for checkbox elements
+                $attributes["fields.{$key}.*"] = $field->label ?? $field->name ?? $key;
             }
         }
 
@@ -197,7 +236,7 @@ class StoreAdRequest extends FormRequest
     }
 
     /**
-     * Get the validated category.
+     * Get the validated category (if loaded).
      */
     public function getCategory(): ?Category
     {
@@ -205,15 +244,19 @@ class StoreAdRequest extends FormRequest
     }
 
     /**
-     * Get validated dynamic fields data.
+     * Return the validated dynamic fields payload as array.
+     * Defensive: ensure it always returns an array.
      */
     public function getValidatedFields(): array
     {
-        return $this->validated()['fields'] ?? [];
+        $validated = $this->validated() ?? [];
+
+        // The validator returns nested arrays when using keys like 'fields.<key>'
+        return $validated['fields'] ?? [];
     }
 
     /**
-     * Handle a failed validation attempt.
+     * Handle a failed validation attempt - return standardized JSON for API.
      */
     protected function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
     {
