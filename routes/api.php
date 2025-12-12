@@ -3,27 +3,24 @@ use App\Http\Controllers\Api\V1\AdController;
 use App\Http\Controllers\Api\V1\AuthController;
 use Illuminate\Support\Facades\Route;
 
-// Public routes
 Route::prefix('v1')->group(function () {
-    // Authentication
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
-    
-    // Public ad viewing
-    Route::get('/ads', [AdController::class, 'index']);
-    Route::get('/ads/{ad}', [AdController::class, 'show']);
-});
+    // Auth public
+    Route::post('register', [AuthController::class, 'register'])->name('auth.register');
+    Route::post('login', [AuthController::class, 'login'])->name('auth.login');
 
-// Protected routes (requires Sanctum authentication)
-Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
-    // Auth
-    Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/me', [AuthController::class, 'me']);
-    
-    // Ads management
-    Route::post('/ads', [AdController::class, 'store']);
-    Route::get('/my-ads', [AdController::class, 'myAds']);
-    Route::put('/ads/{ad}', [AdController::class, 'update']);
-    Route::patch('/ads/{ad}', [AdController::class, 'update']);
-    Route::delete('/ads/{ad}', [AdController::class, 'destroy']);
+    // Public ads
+    Route::get('ads', [AdController::class, 'index'])->name('ads.index');
+    Route::get('ads/{ad}', [AdController::class, 'show'])->name('ads.show');
+
+    // Protected routes
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('logout', [AuthController::class, 'logout'])->name('auth.logout');
+        Route::get('me', [AuthController::class, 'me'])->name('auth.me');
+
+        // Use apiResource for standard CRUD (we expose store/update/destroy via resource)
+        Route::apiResource('ads', AdController::class)->only(['store', 'update', 'destroy']);
+
+        // Extra: my-ads
+        Route::get('my-ads', [AdController::class, 'myAds'])->name('ads.my');
+    });
 });

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
@@ -10,21 +11,26 @@ use App\Models\Ad;
 use App\Services\AdService;
 use Illuminate\Http\Request;
 
+
 class AdController extends Controller
 {
     public function __construct(
         private AdService $adService
-    ) {}
+    ) {
+        // You can register a middleware here if needed, e.g. throttle
+        // $this->middleware('throttle:60,1')->only(['store', 'update']);
+    }
 
     /**
      * POST /api/v1/ads
-     * Create a new ad with dynamic fields.
      */
     public function store(StoreAdRequest $request)
     {
+        // validated category loaded inside the request
         $category = $request->getCategory();
+
         $fieldData = $request->getValidatedFields();
-        
+
         $ad = $this->adService->createAd(
             user: $request->user(),
             category: $category,
@@ -35,19 +41,22 @@ class AdController extends Controller
         return (new AdResource($ad))
             ->response()
             ->setStatusCode(201)
-            ->header('Location', route('ads.show', $ad->id));
+            ->header('Location', route('ads.show', ['ad' => $ad->id]));
     }
 
     /**
      * GET /api/v1/my-ads
-     * List all ads posted by authenticated user (paginated).
      */
     public function myAds(Request $request)
     {
-        $perPage = $request->input('per_page', 15);
-        $perPage = min($perPage, 100); // Max 100 per page
+        $perPage = (int) min($request->input('per_page', 15), 100);
 
-        $ads = Ad::with(['category', 'fieldValues.categoryField', 'fieldValues.selectedOption'])
+        $ads = Ad::with([
+                'category',
+                'user',
+                'fieldValues.categoryField.options',
+                'fieldValues.selectedOption'
+            ])
             ->where('user_id', $request->user()->id)
             ->latest()
             ->paginate($perPage);
@@ -56,19 +65,17 @@ class AdController extends Controller
     }
 
     /**
-     * GET /api/v1/ads/{id}
-     * View a specific ad with all details.
+     * GET /api/v1/ads/{ad}
      */
     public function show(Ad $ad)
     {
-        // Increment view count
+        // No authorization here (publicly viewable)
         $ad->incrementViews();
 
-        // Load relationships
         $ad->load([
             'category',
             'user',
-            'fieldValues.categoryField',
+            'fieldValues.categoryField.options',
             'fieldValues.selectedOption'
         ]);
 
@@ -76,13 +83,15 @@ class AdController extends Controller
     }
 
     /**
-     * PUT/PATCH /api/v1/ads/{id}
-     * Update an existing ad.
+     * PUT/PATCH /api/v1/ads/{ad}
      */
     public function update(UpdateAdRequest $request, Ad $ad)
     {
+        // Policy checks: only owner (or admin via policy) can update
+        $this->authorize('update', $ad);
+
         $fieldData = $request->has('fields') ? $request->input('fields') : null;
-        
+
         $updatedAd = $this->adService->updateAd(
             ad: $ad,
             adData: $request->only(['title', 'description', 'price', 'status']),
@@ -93,18 +102,11 @@ class AdController extends Controller
     }
 
     /**
-     * DELETE /api/v1/ads/{id}
-     * Delete an ad (soft delete).
+     * DELETE /api/v1/ads/{ad}
      */
     public function destroy(Request $request, Ad $ad)
     {
-        // Authorization check
-        if ($ad->user_id !== $request->user()->id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'You are not authorized to delete this ad.',
-            ], 403);
-        }
+        $this->authorize('delete', $ad);
 
         $this->adService->deleteAd($ad);
 
@@ -116,23 +118,25 @@ class AdController extends Controller
 
     /**
      * GET /api/v1/ads
-     * List all active ads (public endpoint - optional).
+     * Public listing of active ads with filters.
      */
     public function index(Request $request)
     {
-        $perPage = $request->input('per_page', 15);
-        $perPage = min($perPage, 100);
+        $perPage = (int) min($request->input('per_page', 15), 100);
 
-        $query = Ad::with(['category', 'user', 'fieldValues.categoryField', 'fieldValues.selectedOption'])
-            ->active();
+        $query = Ad::with([
+                'category',
+                'user',
+                'fieldValues.categoryField.options',
+                'fieldValues.selectedOption'
+            ])->active();
 
-        // Filter by category
-        if ($request->has('category_id')) {
+        // Filters
+        if ($request->filled('category_id')) {
             $query->where('category_id', $request->input('category_id'));
         }
 
-        // Search in title/description
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', "%{$search}%")
@@ -140,17 +144,18 @@ class AdController extends Controller
             });
         }
 
-        // Price range
-        if ($request->has('min_price')) {
+        if ($request->filled('min_price')) {
             $query->where('price', '>=', $request->input('min_price'));
         }
-        if ($request->has('max_price')) {
+
+        if ($request->filled('max_price')) {
             $query->where('price', '<=', $request->input('max_price'));
         }
 
-        // Sort
-        $sortBy = $request->input('sort_by', 'created_at');
-        $sortOrder = $request->input('sort_order', 'desc');
+        // Safe sorting (whitelist)
+        $allowedSorts = ['created_at', 'price', 'published_at', 'views_count'];
+        $sortBy = in_array($request->input('sort_by', 'created_at'), $allowedSorts) ? $request->input('sort_by') : 'created_at';
+        $sortOrder = $request->input('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
         $query->orderBy($sortBy, $sortOrder);
 
         $ads = $query->paginate($perPage);
