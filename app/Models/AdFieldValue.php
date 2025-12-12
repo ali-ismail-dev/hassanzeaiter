@@ -92,40 +92,42 @@ class AdFieldValue extends Model
      * Set the value based on field type.
      */
     public function setValue($value): void
-    {
-        // Clear all value columns first
-        $this->value_text = null;
-        $this->value_integer = null;
-        $this->value_decimal = null;
-        $this->value_date = null;
-        $this->value_boolean = null;
-        $this->value_json = null;
-        $this->category_field_option_id = null;
-
-        switch ($this->categoryField->field_type) {
-            case 'text':
-            case 'textarea':
-            case 'email':
-            case 'url':
-                $this->value_text = $value;
-                break;
-            
-            case 'number':
-                $this->value_integer = (int) $value;
-                break;
-            
-            case 'date':
-                $this->value_date = $value;
-                break;
-            
-            case 'checkbox':
-                $this->value_json = is_array($value) ? $value : [$value];
-                break;
-            
-            case 'select':
-            case 'radio':
-                $this->category_field_option_id = $value;
-                break;
-        }
+{
+    if (!isset($this->categoryField)) {
+        throw new \Exception('categoryField relation must be loaded before calling setValue.');
     }
+
+    switch ($this->categoryField->field_type) {
+        case 'text':
+        case 'textarea':
+        case 'email':
+        case 'url':
+            $this->value_text = $value;
+            break;
+        case 'number':
+            $this->value_integer = (int) $value;
+            break;
+        case 'decimal':
+        case 'price':
+            $this->value_decimal = (float) $value;
+            break;
+        case 'date':
+            $this->value_date = $value;
+            break;
+        case 'checkbox':
+            // store as JSON array
+            $this->value_json = json_encode($value);
+            break;
+        case 'radio':
+        case 'select':
+            $this->category_field_option_id = $value;
+            break;
+        case 'boolean':
+            $this->value_boolean = (bool) $value;
+            break;
+        default:
+            $this->value_text = $value;
+    }
+}
+
 }

@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
+
 class DatabaseSeeder extends Seeder
 {
     use WithoutModelEvents;
@@ -13,17 +14,15 @@ class DatabaseSeeder extends Seeder
     /**
      * Seed the application's database.
      */
-    public function run(): void
-    {
-        User::factory(10)->create();
+  public function run(): void
+{
+    // Create users
+    User::factory(10)->create();
 
-        /**
-         * Seed the application's database.
-         */
-
-        $this->call([
-            OlxCategoriesSeeder::class,
-            // Add other seeders here
-        ]);
-    }
+    // Seed other tables
+    $this->call([
+        OlxCategoriesSeeder::class,
+        AdSeeder::class, 
+    ]);
+}
 }

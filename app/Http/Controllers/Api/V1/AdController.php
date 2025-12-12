@@ -10,10 +10,12 @@ use App\Http\Resources\AdCollection;
 use App\Models\Ad;
 use App\Services\AdService;
 use Illuminate\Http\Request;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 
 class AdController extends Controller
 {
+    use AuthorizesRequests;
     public function __construct(
         private AdService $adService
     ) {

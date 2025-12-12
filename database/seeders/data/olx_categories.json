@@ -79,4 +79,302 @@
       }
     ]
   }
+    ,
+  {
+    "external_id": "501",
+    "name": "Laptops & Computers",
+    "slug": "laptops-computers",
+    "description": "Desktops, laptops, and accessories",
+    "fields": [
+      {
+        "external_id": "brand",
+        "name": "Brand",
+        "type": "select",
+        "required": true,
+        "options": ["Dell", "HP", "Apple", "Lenovo"]
+      },
+      {
+        "external_id": "ram",
+        "name": "RAM (GB)",
+        "type": "number",
+        "required": true,
+        "options": []
+      },
+      {
+        "external_id": "condition",
+        "name": "Condition",
+        "type": "select",
+        "required": true,
+        "options": ["New", "Used", "Refurbished"]
+      }
+    ]
+  },
+  {
+    "external_id": "502",
+    "name": "Mobile Phones",
+    "slug": "mobile-phones",
+    "description": "All brands and models of mobile phones",
+    "fields": [
+      {
+        "external_id": "brand",
+        "name": "Brand",
+        "type": "select",
+        "required": true,
+        "options": ["Apple", "Samsung", "Xiaomi", "Huawei"]
+      },
+      {
+        "external_id": "storage",
+        "name": "Storage Capacity (GB)",
+        "type": "number",
+        "required": true,
+        "options": []
+      },
+      {
+        "external_id": "color",
+        "name": "Color",
+        "type": "text",
+        "required": false,
+        "options": []
+      }
+    ]
+  },
+  {
+    "external_id": "503",
+    "name": "Furniture",
+    "slug": "furniture",
+    "description": "Home and office furniture",
+    "fields": [
+      {
+        "external_id": "type",
+        "name": "Type",
+        "type": "select",
+        "required": true,
+        "options": ["Sofa", "Chair", "Table", "Bed"]
+      },
+      {
+        "external_id": "material",
+        "name": "Material",
+        "type": "text",
+        "required": false,
+        "options": []
+      },
+      {
+        "external_id": "condition",
+        "name": "Condition",
+        "type": "select",
+        "required": true,
+        "options": ["New", "Used"]
+      }
+    ]
+  },
+  {
+    "external_id": "504",
+    "name": "Bicycles & Scooters",
+    "slug": "bicycles-scooters",
+    "description": "Bicycles, scooters, and accessories",
+    "fields": [
+      {
+        "external_id": "type",
+        "name": "Type",
+        "type": "select",
+        "required": true,
+        "options": ["Bicycle", "Electric Scooter", "Kick Scooter"]
+      },
+      {
+        "external_id": "brand",
+        "name": "Brand",
+        "type": "text",
+        "required": false,
+        "options": []
+      },
+      {
+        "external_id": "condition",
+        "name": "Condition",
+        "type": "select",
+        "required": true,
+        "options": ["New", "Used"]
+      }
+    ]
+  },
+  {
+    "external_id": "505",
+    "name": "Clothing & Accessories",
+    "slug": "clothing-accessories",
+    "description": "Men's, women's, and kids clothing",
+    "fields": [
+      {
+        "external_id": "category",
+        "name": "Category",
+        "type": "select",
+        "required": true,
+        "options": ["Men", "Women", "Kids"]
+      },
+      {
+        "external_id": "size",
+        "name": "Size",
+        "type": "text",
+        "required": true,
+        "options": []
+      },
+      {
+        "external_id": "color",
+        "name": "Color",
+        "type": "text",
+        "required": false,
+        "options": []
+      },
+      {
+        "external_id": "material",
+        "name": "Material",
+        "type": "text",
+        "required": false,
+        "options": []
+      }
+    ]
+  },
+  {
+    "external_id": "506",
+    "name": "Gaming Consoles & Accessories",
+    "slug": "gaming-consoles-accessories",
+    "description": "PlayStation, Xbox, Nintendo and accessories",
+    "fields": [
+      {
+        "external_id": "brand",
+        "name": "Brand",
+        "type": "select",
+        "required": true,
+        "options": ["Sony", "Microsoft", "Nintendo"]
+      },
+      {
+        "external_id": "type",
+        "name": "Type",
+        "type": "select",
+        "required": true,
+        "options": ["Console", "Accessory"]
+      },
+      {
+        "external_id": "condition",
+        "name": "Condition",
+        "type": "select",
+        "required": true,
+        "options": ["New", "Used", "Refurbished"]
+      }
+    ]
+  },
+  {
+    "external_id": "507",
+    "name": "Books & Stationery",
+    "slug": "books-stationery",
+    "description": "Books, notebooks, and office supplies",
+    "fields": [
+      {
+        "external_id": "type",
+        "name": "Type",
+        "type": "select",
+        "required": true,
+        "options": ["Book", "Notebook", "Stationery"]
+      },
+      {
+        "external_id": "genre",
+        "name": "Genre",
+        "type": "text",
+        "required": false,
+        "options": []
+      },
+      {
+        "external_id": "condition",
+        "name": "Condition",
+        "type": "select",
+        "required": true,
+        "options": ["New", "Used"]
+      }
+    ]
+  },
+  {
+    "external_id": "508",
+    "name": "Cameras & Photography",
+    "slug": "cameras-photography",
+    "description": "Cameras, lenses, and photography gear",
+    "fields": [
+      {
+        "external_id": "type",
+        "name": "Type",
+        "type": "select",
+        "required": true,
+        "options": ["DSLR", "Mirrorless", "Point & Shoot"]
+      },
+      {
+        "external_id": "brand",
+        "name": "Brand",
+        "type": "text",
+        "required": false,
+        "options": []
+      },
+      {
+        "external_id": "condition",
+        "name": "Condition",
+        "type": "select",
+        "required": true,
+        "options": ["New", "Used", "Refurbished"]
+      }
+    ]
+  },
+  {
+    "external_id": "509",
+    "name": "Musical Instruments",
+    "slug": "musical-instruments",
+    "description": "Guitars, keyboards, and other instruments",
+    "fields": [
+      {
+        "external_id": "type",
+        "name": "Type",
+        "type": "select",
+        "required": true,
+        "options": ["Guitar", "Keyboard", "Drums", "Other"]
+      },
+      {
+        "external_id": "brand",
+        "name": "Brand",
+        "type": "text",
+        "required": false,
+        "options": []
+      },
+      {
+        "external_id": "condition",
+        "name": "Condition",
+        "type": "select",
+        "required": true,
+        "options": ["New", "Used"]
+      }
+    ]
+  },
+  {
+    "external_id": "510",
+    "name": "Watches & Accessories",
+    "slug": "watches-accessories",
+    "description": "Watches, straps, and accessories",
+    "fields": [
+      {
+        "external_id": "brand",
+        "name": "Brand",
+        "type": "text",
+        "required": false,
+        "options": []
+      },
+      {
+        "external_id": "type",
+        "name": "Type",
+        "type": "select",
+        "required": true,
+        "options": ["Analog", "Digital", "Smartwatch"]
+      },
+      {
+        "external_id": "condition",
+        "name": "Condition",
+        "type": "select",
+        "required": true,
+        "options": ["New", "Used"]
+      }
+    ]
+  }
 ]
