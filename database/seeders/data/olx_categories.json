@@ -1,0 +1,82 @@
+[
+  {
+    "external_id": "23",
+    "name": "Cars for Sale",
+    "slug": "cars-for-sale",
+    "description": "All types of cars for sale",
+    "fields": [
+      {
+        "external_id": "make",
+        "name": "Make",
+        "type": "select",
+        "required": true,
+        "options": ["Toyota", "Honda", "BMW", "Mercedes"]
+      },
+      {
+        "external_id": "model",
+        "name": "Model",
+        "type": "text",
+        "required": true,
+        "options": []
+      },
+      {
+        "external_id": "year",
+        "name": "Year",
+        "type": "number",
+        "required": true,
+        "options": []
+      }
+    ]
+  },
+  {
+    "external_id": "61",
+    "name": "Apartments & Villas for Rent",
+    "slug": "apartments-villas-for-rent",
+    "description": "Houses, apartments, and villas available for rent",
+    "fields": [
+      {
+        "external_id": "type",
+        "name": "Property Type",
+        "type": "select",
+        "required": true,
+        "options": ["Apartment", "Villa", "Studio"]
+      },
+      {
+        "external_id": "bedrooms",
+        "name": "Bedrooms",
+        "type": "number",
+        "required": true,
+        "options": []
+      },
+      {
+        "external_id": "furnished",
+        "name": "Furnished",
+        "type": "select",
+        "required": false,
+        "options": ["Yes", "No"]
+      }
+    ]
+  },
+  {
+    "external_id": "327",
+    "name": "Ball Sports",
+    "slug": "ball-sports",
+    "description": "Equipment for football, basketball, and other ball sports",
+    "fields": [
+      {
+        "external_id": "sport_type",
+        "name": "Sport Type",
+        "type": "select",
+        "required": true,
+        "options": ["Football", "Basketball", "Tennis", "Volleyball"]
+      },
+      {
+        "external_id": "condition",
+        "name": "Condition",
+        "type": "select",
+        "required": true,
+        "options": ["New", "Used"]
+      }
+    ]
+  }
+]

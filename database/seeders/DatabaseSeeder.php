@@ -21,5 +21,14 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
+
+        /**
+         * Seed the application's database.
+         */
+
+        $this->call([
+            OlxCategoriesSeeder::class,
+            // Add other seeders here
+        ]);
     }
 }
