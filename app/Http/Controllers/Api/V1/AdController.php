@@ -32,8 +32,11 @@ class AdController extends Controller
     {
         try {
             $category = $request->getCategory();
-            $fieldData = $request->getValidatedFields();
-            $adPayload = $request->validated(); // includes base fields (title, description, price, category_id)
+            $adPayload = $request->validated();
+
+            // Extract dynamic fields from validated payload
+            // The payload structure is: fields.field_key => value
+            $fieldData = $adPayload['fields'] ?? [];
 
             $ad = $this->adService->createAd(
                 user: $request->user(),
@@ -51,18 +54,18 @@ class AdController extends Controller
                 ->setStatusCode(201)
                 ->header('Location', route('ads.show', ['ad' => $ad->id]));
         } catch (Throwable $e) {
-    Log::error('Ad creation failed', [
-        'user_id' => $request->user()?->id,
-        'category_id' => $request->input('category_id'),
-        'error' => $e->getMessage(),
-        'trace' => $e->getTraceAsString(),
-    ]);
+            Log::error('Ad creation failed', [
+                'user_id' => $request->user()?->id,
+                'category_id' => $request->input('category_id'),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-    return response()->json([
-        'success' => false,
-        'message' => 'Failed to create ad. If this persists, contact the dev team.',
-    ], 500);
-}
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create ad. If this persists, contact the dev team.',
+            ], 500);
+        }
     }
 
     /**
@@ -73,11 +76,11 @@ class AdController extends Controller
         $perPage = (int) min($request->input('per_page', 15), 100);
 
         $ads = Ad::with([
-                'category',
-                'user',
-                'fieldValues.categoryField.options',
-                'fieldValues.selectedOption'
-            ])
+            'category',
+            'user',
+            'fieldValues.categoryField.options',
+            'fieldValues.selectedOption'
+        ])
             ->where('user_id', $request->user()->id)
             ->latest()
             ->paginate($perPage);
@@ -106,25 +109,28 @@ class AdController extends Controller
      * PUT/PATCH /api/v1/ads/{ad}
      */
     public function update(UpdateAdRequest $request, Ad $ad): AdResource
-{
-    $this->authorize('update', $ad);
+    {
+        $this->authorize('update', $ad);
 
-    $payload = $request->validated();
+        $payload = $request->validated();
 
-    $updatedAd = $this->adService->updateAd(
-        ad: $ad,
-        adData: [
-            'title' => $payload['title'] ?? null,
-            'description' => $payload['description'] ?? null,
-            'price' => $payload['price'] ?? null,
-            'status' => $payload['status'] ?? null,
-        ],
-        fieldData: $payload['fields'] ?? null
-    );
+        // Extract dynamic fields from the validated payload
+        // The payload structure is: fields.field_key => value
+        $fieldData = $payload['fields'] ?? [];
 
-    return new AdResource($updatedAd);
-}
+        $updatedAd = $this->adService->updateAd(
+            ad: $ad,
+            adData: [
+                'title' => $payload['title'] ?? null,
+                'description' => $payload['description'] ?? null,
+                'price' => $payload['price'] ?? null,
+                'status' => $payload['status'] ?? null,
+            ],
+            fieldData: $fieldData
+        );
 
+        return new AdResource($updatedAd);
+    }
 
     /**
      * DELETE /api/v1/ads/{ad}
@@ -149,24 +155,27 @@ class AdController extends Controller
         $perPage = (int) min($request->input('per_page', 15), 100);
 
         $query = Ad::with([
-                'category',
-                'user',
-                'fieldValues.categoryField.options',
-                'fieldValues.selectedOption'
-            ])->active();
+            'category',
+            'user',
+            'fieldValues.categoryField.options',
+            'fieldValues.selectedOption'
+        ])->active();
 
+        // Filter by category
         if ($request->filled('category_id')) {
             $query->where('category_id', $request->input('category_id'));
         }
 
+        // Search by title or description
         if ($request->filled('search')) {
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                    ->orWhere('description', 'like', "%{$search}%");
             });
         }
 
+        // Price filters
         if ($request->filled('min_price')) {
             $query->where('price', '>=', $request->input('min_price'));
         }
@@ -175,11 +184,17 @@ class AdController extends Controller
             $query->where('price', '<=', $request->input('max_price'));
         }
 
+        // Sorting
         $allowedSorts = ['created_at', 'price', 'published_at', 'views_count'];
-        $sortBy = in_array($request->input('sort_by', 'created_at'), $allowedSorts) ? $request->input('sort_by') : 'created_at';
-        $sortOrder = $request->input('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
+        $sortBy = $request->input('sort_by', 'created_at');
+        $sortBy = in_array($sortBy, $allowedSorts) ? $sortBy : 'created_at';
+
+        $sortOrder = $request->input('sort_order', 'desc');
+        $sortOrder = strtolower($sortOrder) === 'asc' ? 'asc' : 'desc';
+
         $query->orderBy($sortBy, $sortOrder);
 
+        // Paginate results
         $ads = $query->paginate($perPage);
 
         return new AdCollection($ads);
