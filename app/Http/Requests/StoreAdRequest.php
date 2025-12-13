@@ -226,6 +226,7 @@ class StoreAdRequest extends FormRequest
             'price.numeric' => 'The price must be a valid number.',
             'price.min' => 'The price cannot be negative.',
             'fields.*.required' => 'The :attribute field is required.',
+            'fields.*.numeric' => 'The :attribute must be a number.',
             'fields.*.integer' => 'The :attribute must be a valid number.',
             'fields.*.exists' => 'The selected :attribute is invalid.',
             'fields.*.array' => 'The :attribute must be a list of options.',

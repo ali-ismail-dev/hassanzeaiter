@@ -80,6 +80,12 @@ class AdService
     /**
      * Save or update dynamic field values for an ad.
      *
+     * This implementation:
+     *  - builds a case-insensitive lookup of category fields by canonical key
+     *  - iterates incoming payload keys (so partial updates work reliably)
+     *  - supports explicit null to delete a value
+     *  - logs helpful debug info
+     *
      * @param Ad $ad
      * @param array $fieldData - keys should match canonical field keys (external_id|name|id)
      */
@@ -93,20 +99,60 @@ class AdService
             return;
         }
 
+        // Build a lookup map of canonicalKey (lowercased) => fieldModel
+        $fieldLookup = [];
         foreach ($category->fields as $field) {
-            // canonical key for incoming payload — keep consistent with StoreAdRequest
             $key = $this->getFieldKey($field);
+            $fieldLookup[strtolower((string)$key)] = $field;
+        }
 
-            // Skip if field not provided (note: to delete a value on update, pass explicit null and handle that case here)
-            if (!array_key_exists($key, $fieldData)) {
+        Log::debug('Saving dynamic fields - incoming keys', [
+            'ad_id' => $ad->id,
+            'incoming_keys' => array_keys($fieldData),
+            'lookup_keys' => array_keys($fieldLookup),
+        ]);
+
+        // Iterate incoming payload keys (more robust for partial updates)
+        foreach ($fieldData as $incomingKey => $incomingValue) {
+            $lookupKey = strtolower((string)$incomingKey);
+
+            if (!isset($fieldLookup[$lookupKey])) {
+                Log::warning('Ignoring unknown dynamic field key', [
+                    'ad_id' => $ad->id,
+                    'incoming_key' => $incomingKey,
+                ]);
                 continue;
             }
 
-            $value = $fieldData[$key];
+            $field = $fieldLookup[$lookupKey];
+
+            $value = $incomingValue;
 
             // Normalize empty strings to null to avoid invalid inserts for numeric/date fields
             if (is_string($value) && trim($value) === '') {
                 $value = null;
+            }
+
+            // If client explicitly sent null -> delete existing ad field value (intentional clear)
+            if ($value === null) {
+                $existing = AdFieldValue::where('ad_id', $ad->id)
+                    ->where('category_field_id', $field->id)
+                    ->first();
+
+                if ($existing) {
+                    $existing->delete();
+                    Log::info('Removed dynamic field value (explicit null)', [
+                        'ad_id' => $ad->id,
+                        'field_key' => $incomingKey,
+                        'category_field_id' => $field->id,
+                    ]);
+                } else {
+                    Log::debug('No existing value to remove for explicit null', [
+                        'ad_id' => $ad->id,
+                        'field_key' => $incomingKey,
+                    ]);
+                }
+                continue;
             }
 
             // Create or update the field value record
@@ -121,19 +167,28 @@ class AdService
             // Attach categoryField relation so setValue() can inspect the field metadata
             $adFieldValue->setRelation('categoryField', $field);
 
-            // Set the value (AdFieldValue::setValue handles type-specific assignment)
-            $adFieldValue->setValue($value);
+            try {
+                // Set the value (AdFieldValue::setValue handles type-specific assignment)
+                $adFieldValue->setValue($value);
+                $adFieldValue->save();
 
-            // If the client explicitly sent null for a required field you may want to delete the record;
-            // current behavior: store null values in the typed columns (setValue cleared other columns).
-            $adFieldValue->save();
-
-            Log::debug('Saved field value', [
-                'ad_id' => $ad->id,
-                'field_key' => $key,
-                'field_type' => $field->field_type,
-                'category_field_id' => $field->id,
-            ]);
+                Log::debug('Saved dynamic field value', [
+                    'ad_id' => $ad->id,
+                    'field_key' => $incomingKey,
+                    'field_type' => $field->field_type,
+                    'category_field_id' => $field->id,
+                    'saved_id' => $adFieldValue->id,
+                ]);
+            } catch (Throwable $e) {
+                // Log per-field error but continue with other fields
+                Log::error('Failed to save dynamic field value', [
+                    'ad_id' => $ad->id,
+                    'field_key' => $incomingKey,
+                    'category_field_id' => $field->id,
+                    'error' => $e->getMessage(),
+                ]);
+                // If you prefer to abort the whole update on first field error, re-throw the exception here.
+            }
         }
     }
 

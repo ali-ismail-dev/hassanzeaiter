@@ -106,25 +106,25 @@ class AdController extends Controller
      * PUT/PATCH /api/v1/ads/{ad}
      */
     public function update(UpdateAdRequest $request, Ad $ad): AdResource
-    {
-        $this->authorize('update', $ad);
+{
+    $this->authorize('update', $ad);
 
-        $fieldData = $request->has('fields') ? $request->input('fields') : null;
-        $payload = $request->validated();
+    $payload = $request->validated();
 
-        $updatedAd = $this->adService->updateAd(
-            ad: $ad,
-            adData: [
-                'title' => $payload['title'] ?? null,
-                'description' => $payload['description'] ?? null,
-                'price' => $payload['price'] ?? null,
-                'status' => $payload['status'] ?? null,
-            ],
-            fieldData: $fieldData
-        );
+    $updatedAd = $this->adService->updateAd(
+        ad: $ad,
+        adData: [
+            'title' => $payload['title'] ?? null,
+            'description' => $payload['description'] ?? null,
+            'price' => $payload['price'] ?? null,
+            'status' => $payload['status'] ?? null,
+        ],
+        fieldData: $payload['fields'] ?? null
+    );
 
-        return new AdResource($updatedAd);
-    }
+    return new AdResource($updatedAd);
+}
+
 
     /**
      * DELETE /api/v1/ads/{ad}
