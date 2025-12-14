@@ -14,15 +14,24 @@ class DatabaseSeeder extends Seeder
     /**
      * Seed the application's database.
      */
-  public function run(): void
-{
-    // Create users
-    User::factory(10)->create();
+    public function run(): void
+    {
+        // Seed categories first (required for ads)
+        $this->call([
+            OlxCategoriesSeeder::class,
+        ]);
 
-    // Seed other tables
-    $this->call([
-        OlxCategoriesSeeder::class,
-        AdSeeder::class, 
-    ]);
-}
+        // Create test user
+        $this->call([
+            TestUserSeeder::class,
+        ]);
+
+        // Create test ads with field values
+        $this->call([
+            TestAdSeeder::class,
+        ]);
+
+        // Create additional random users
+        User::factory(10)->create();
+    }
 }
