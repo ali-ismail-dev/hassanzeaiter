@@ -33,7 +33,8 @@ class StoreAdRequest extends FormRequest
     {
         $rules = [
             // Base ad fields
-            'category_id' => ['required', 'integer', 'exists:categories,id'],
+            // Accept external_id (string) from OLX API, validate it exists in categories table
+            'category_id' => ['required', 'string', 'exists:categories,external_id'],
             'title' => ['required', 'string', 'min:5', 'max:100'],
             'description' => ['required', 'string', 'min:20', 'max:5000'],
             'price' => ['nullable', 'numeric', 'min:0', 'max:999999999.99'],
@@ -58,12 +59,13 @@ class StoreAdRequest extends FormRequest
     {
         $rules = [];
 
-        $categoryId = $this->input('category_id');
-        if (!$categoryId) {
+        $categoryExternalId = $this->input('category_id');
+        if (!$categoryExternalId) {
             return $rules;
         }
 
-        $this->category = Category::with(['fields.options'])->find($categoryId);
+        // Look up category by external_id (from OLX API)
+        $this->category = Category::with(['fields.options'])->where('external_id', $categoryExternalId)->first();
         if (!$this->category) {
             return $rules;
         }
@@ -217,7 +219,7 @@ class StoreAdRequest extends FormRequest
     {
         return [
             'category_id.required' => 'Please select a category for your ad.',
-            'category_id.exists' => 'The selected category is invalid.',
+            'category_id.exists' => 'The selected category is invalid. Please use the external_id from the OLX API.',
             'title.required' => 'Your ad needs a title.',
             'title.min' => 'The title must be at least :min characters.',
             'title.max' => 'The title cannot exceed :max characters.',

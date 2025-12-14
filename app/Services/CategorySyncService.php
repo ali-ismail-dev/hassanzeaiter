@@ -34,8 +34,16 @@ class CategorySyncService
             $categoriesData = $this->olxApiService->fetchCategories($forceRefresh);
             $stats['categories'] = $this->syncCategories($categoriesData);
 
-            // Step 2: Get all category external IDs
-            $categoryExternalIds = array_column($categoriesData, 'id');
+            // Step 2: Get all category external IDs (use externalID, not id)
+            $categoryExternalIds = [];
+            foreach ($categoriesData as $categoryData) {
+                // Use externalID if available, fallback to id for backward compatibility
+                $externalId = $categoryData['externalID'] ?? $categoryData['external_id'] ?? $categoryData['id'] ?? null;
+                if ($externalId) {
+                    $categoryExternalIds[] = (string) $externalId;
+                }
+            }
+            $categoryExternalIds = array_unique($categoryExternalIds);
 
             // Step 3: Sync category fields (batch request)
             if (!empty($categoryExternalIds)) {
@@ -68,8 +76,16 @@ class CategorySyncService
         $count = 0;
 
         foreach ($categoriesData as $categoryData) {
+            // Use externalID if available, fallback to id for backward compatibility
+            $externalId = $categoryData['externalID'] ?? $categoryData['external_id'] ?? $categoryData['id'] ?? null;
+            
+            if (!$externalId) {
+                Log::warning('Category missing external identifier', ['category_data' => $categoryData]);
+                continue;
+            }
+            
             $category = Category::updateOrCreate(
-                ['external_id' => (string) $categoryData['id']],
+                ['external_id' => (string) $externalId],
                 [
                     'name' => $categoryData['name'] ?? 'Unknown',
                     'slug' => isset($categoryData['slug']) 
@@ -91,23 +107,44 @@ class CategorySyncService
 
     /**
      * Sync category fields and their options.
-     * API returns structure keyed by categoryId with "flatFields", "childrenFields", and "parentFieldLookup"
+     * API returns structure keyed by categoryId (internal id, not externalID) with "flatFields", "childrenFields", and "parentFieldLookup"
+     * 
+     * Note: The API returns fields keyed by internal 'id', but we store categories by 'external_id'.
+     * We need to map the internal id back to the category using the metadata or by finding the category
+     * that matches the internal id in its metadata.
      */
     private function syncCategoryFields(array $fieldsDataByCategory): array
     {
         $fieldCount = 0;
         $optionCount = 0;
 
-        foreach ($fieldsDataByCategory as $categoryExternalId => $categoryData) {
+        // Build a map of internal id -> category for lookup
+        $internalIdToCategory = [];
+        foreach (Category::all() as $cat) {
+            $metadata = $cat->metadata ?? [];
+            if (isset($metadata['raw_data']['id'])) {
+                $internalId = (string) $metadata['raw_data']['id'];
+                $internalIdToCategory[$internalId] = $cat;
+            }
+        }
+
+        foreach ($fieldsDataByCategory as $categoryKey => $categoryData) {
             // Skip common category fields and special keys
-            if ($categoryExternalId === 'common_category_fields' || !is_numeric($categoryExternalId)) {
+            if ($categoryKey === 'common_category_fields' || !is_numeric($categoryKey)) {
                 continue;
             }
 
-            $category = Category::where('external_id', (string) $categoryExternalId)->first();
+            // The API returns fields keyed by internal 'id', not 'externalID'
+            // Try to find category by internal id from metadata first
+            $category = $internalIdToCategory[$categoryKey] ?? null;
+            
+            // Fallback: try to find by external_id (in case the key happens to match)
+            if (!$category) {
+                $category = Category::where('external_id', (string) $categoryKey)->first();
+            }
 
             if (!$category) {
-                Log::warning("Category not found for external_id: {$categoryExternalId}");
+                Log::warning("Category not found for API key: {$categoryKey} (tried internal id and external_id)");
                 continue;
             }
 
@@ -210,11 +247,15 @@ class CategorySyncService
      */
     private function findParentId(array $categoryData): ?int
     {
-        if (!isset($categoryData['parent_id']) || !$categoryData['parent_id']) {
+        // Check for parentID (from API) or parent_id (fallback)
+        $parentExternalId = $categoryData['parentID'] ?? $categoryData['parent_id'] ?? null;
+        
+        if (!$parentExternalId) {
             return null;
         }
 
-        $parent = Category::where('external_id', (string) $categoryData['parent_id'])->first();
+        // Look up parent by external_id
+        $parent = Category::where('external_id', (string) $parentExternalId)->first();
         return $parent?->id;
     }
 

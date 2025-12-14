@@ -19,6 +19,11 @@ class AdService
     {
         try {
             return DB::transaction(function () use ($user, $category, $adData, $fieldData) {
+                // Ensure category has fields loaded
+                if (!$category->relationLoaded('fields')) {
+                    $category->load('fields.options');
+                }
+
                 // Create the main ad record
                 $ad = Ad::create([
                     'user_id' => $user->id,
@@ -30,8 +35,8 @@ class AdService
                     'published_at' => now(),
                 ]);
 
-                // Save dynamic field values
-                $this->saveDynamicFields($ad, $fieldData);
+                // Save dynamic field values (pass category to avoid re-querying)
+                $this->saveDynamicFields($ad, $fieldData, $category);
 
                 Log::info('Ad created successfully', [
                     'ad_id' => $ad->id,
@@ -64,7 +69,12 @@ class AdService
 
                 // Update dynamic fields if provided (null = not provided)
                 if ($fieldData !== null) {
-                    $this->saveDynamicFields($ad, $fieldData);
+                    // Ensure category has fields loaded
+                    $category = $ad->category;
+                    if (!$category->relationLoaded('fields')) {
+                        $category->load('fields.options');
+                    }
+                    $this->saveDynamicFields($ad, $fieldData, $category);
                 }
 
                 Log::info('Ad updated successfully', ['ad_id' => $ad->id]);
@@ -88,15 +98,24 @@ class AdService
      *
      * @param Ad $ad
      * @param array $fieldData - keys should match canonical field keys (external_id|name|id)
+     * @param Category|null $category - Optional category to avoid re-querying (should have fields loaded)
      */
-    private function saveDynamicFields(Ad $ad, array $fieldData): void
+    private function saveDynamicFields(Ad $ad, array $fieldData, ?Category $category = null): void
     {
-        $category = $ad->category()->with('fields.options')->first();
+        // Use provided category or load it
+        if (!$category) {
+            $category = $ad->category()->with('fields.options')->first();
+        }
 
         // Defensive: if no category loaded, nothing to save
         if (!$category) {
             Log::warning('Attempt to save dynamic fields but category not found', ['ad_id' => $ad->id]);
             return;
+        }
+
+        // Ensure fields are loaded
+        if (!$category->relationLoaded('fields')) {
+            $category->load('fields.options');
         }
 
         // Build a lookup map of canonicalKey (lowercased) => fieldModel
@@ -106,10 +125,23 @@ class AdService
             $fieldLookup[strtolower((string)$key)] = $field;
         }
 
+        // Log warning if category has no fields but fieldData was provided
+        if (empty($fieldLookup) && !empty($fieldData)) {
+            Log::warning('Category has no fields defined but field data was provided', [
+                'ad_id' => $ad->id,
+                'category_id' => $category->id,
+                'category_name' => $category->name,
+                'incoming_keys' => array_keys($fieldData),
+            ]);
+        }
+
         Log::debug('Saving dynamic fields - incoming keys', [
             'ad_id' => $ad->id,
+            'category_id' => $category->id,
+            'category_name' => $category->name,
             'incoming_keys' => array_keys($fieldData),
             'lookup_keys' => array_keys($fieldLookup),
+            'field_count' => $category->fields->count(),
         ]);
 
         // Iterate incoming payload keys (more robust for partial updates)
