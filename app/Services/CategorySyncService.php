@@ -91,13 +91,19 @@ class CategorySyncService
 
     /**
      * Sync category fields and their options.
+     * API returns structure keyed by categoryId with "flatFields", "childrenFields", and "parentFieldLookup"
      */
     private function syncCategoryFields(array $fieldsDataByCategory): array
     {
         $fieldCount = 0;
         $optionCount = 0;
 
-        foreach ($fieldsDataByCategory as $categoryExternalId => $fieldsData) {
+        foreach ($fieldsDataByCategory as $categoryExternalId => $categoryData) {
+            // Skip common category fields and special keys
+            if ($categoryExternalId === 'common_category_fields' || !is_numeric($categoryExternalId)) {
+                continue;
+            }
+
             $category = Category::where('external_id', (string) $categoryExternalId)->first();
 
             if (!$category) {
@@ -105,18 +111,25 @@ class CategorySyncService
                 continue;
             }
 
-            if (!isset($fieldsData['fields']) || !is_array($fieldsData['fields'])) {
-                Log::warning("No fields found for category: {$categoryExternalId}");
+            // Extract flatFields which contains the actual field definitions
+            if (!is_array($categoryData) || !isset($categoryData['flatFields']) || !is_array($categoryData['flatFields'])) {
+                Log::warning("No flatFields found for category: {$categoryExternalId}");
                 continue;
             }
 
-            foreach ($fieldsData['fields'] as $fieldData) {
-                $field = $this->syncCategoryField($category, $fieldData);
-                $fieldCount++;
+            $flatFields = $categoryData['flatFields'];
 
-                // Sync field options if this is a select/radio/checkbox field
-                if (isset($fieldData['choices']) && is_array($fieldData['choices'])) {
-                    $optionCount += $this->syncFieldOptions($field, $fieldData['choices']);
+            // Process each field
+            foreach ($flatFields as $fieldKey => $fieldData) {
+                // Check if this is a field object with metadata
+                if (is_array($fieldData) && isset($fieldData['attribute'])) {
+                    // This is a field object with properties
+                    $field = $this->syncCategoryField($category, $fieldData);
+                    $fieldCount++;
+
+                    if (isset($fieldData['choices']) && is_array($fieldData['choices'])) {
+                        $optionCount += $this->syncFieldOptions($field, $fieldData['choices']);
+                    }
                 }
             }
         }
@@ -132,20 +145,22 @@ class CategorySyncService
      */
     private function syncCategoryField(Category $category, array $fieldData): CategoryField
     {
-        $fieldType = $this->olxApiService->mapFieldType($fieldData['type'] ?? 'text');
+        // API field structure uses 'attribute' as the identifier and 'filterType' as field type
+        $fieldName = $fieldData['attribute'] ?? $fieldData['name'] ?? 'unknown_field';
+        $fieldType = $this->olxApiService->mapFieldType($fieldData['filterType'] ?? $fieldData['type'] ?? 'text');
 
         return CategoryField::updateOrCreate(
             [
                 'category_id' => $category->id,
-                'external_id' => (string) ($fieldData['id'] ?? $fieldData['name']),
+                'external_id' => (string) ($fieldData['id'] ?? $fieldName),
             ],
             [
-                'name' => $fieldData['name'] ?? 'unknown_field',
-                'label' => $fieldData['label'] ?? $fieldData['name'] ?? 'Unknown Field',
+                'name' => $fieldName,
+                'label' => $fieldData['name'] ?? $fieldName,
                 'field_type' => $fieldType,
-                'is_required' => $fieldData['required'] ?? false,
+                'is_required' => $fieldData['isMandatory'] ?? $fieldData['required'] ?? false,
                 'is_searchable' => $fieldData['searchable'] ?? false,
-                'order' => $fieldData['order'] ?? 0,
+                'order' => $fieldData['displayPriority'] ?? $fieldData['order'] ?? 0,
                 'validation_rules' => $this->extractValidationRules($fieldData),
                 'placeholder' => $fieldData['placeholder'] ?? null,
                 'help_text' => $fieldData['help_text'] ?? $fieldData['hint'] ?? null,

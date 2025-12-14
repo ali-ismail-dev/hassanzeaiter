@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Category;
 use App\Models\CategoryField;
 use App\Models\CategoryFieldOption;
+use App\Services\CategorySyncService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -18,11 +19,41 @@ class OlxCategoriesSeeder extends Seeder
     {
         $this->command->info('🚀 Starting OLX categories seeding...');
 
+        // First attempt: programmatic sync using the CategorySyncService (calls OLX API with caching)
+        try {
+            $this->command->info('Attempting to sync categories from OLX API...');
+            /** @var CategorySyncService $syncService */
+            $syncService = app(CategorySyncService::class);
+
+            $stats = $syncService->syncAll(false);
+
+            $this->command->info('✅ Synced from OLX API');
+            $this->command->table(
+                ['Metric', 'Count'],
+                [
+                    ['Categories synced', $stats['categories'] ?? 0],
+                    ['Fields synced', $stats['fields'] ?? 0],
+                    ['Options synced', $stats['options'] ?? 0],
+                ]
+            );
+
+            // If categories were synced, we're done.
+            if (!empty($stats['categories'])) {
+                return;
+            }
+
+            $this->command->warn('OLX API returned zero categories; falling back to local JSON seeder.');
+        } catch (\Throwable $e) {
+            $this->command->warn('OLX API sync failed: ' . $e->getMessage());
+            Log::error('CategorySyncService failed in seeder', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            $this->command->warn('Falling back to local JSON seeder.');
+        }
+
+        // Fallback: use bundled local JSON file (idempotent)
         $localPath = database_path('seeders/data/olx_categories.json');
         $categoriesData = [];
 
         try {
-            // Load JSON file if exists
             if (File::exists($localPath)) {
                 $this->command->info("Loading categories from local file: {$localPath}");
                 $json = json_decode(File::get($localPath), true);
@@ -32,7 +63,6 @@ class OlxCategoriesSeeder extends Seeder
                 }
             } else {
                 $this->command->warn('No local JSON file found. Using embedded sample categories.');
-                // Minimal embedded fallback
                 $categoriesData = [
                     [
                         'external_id' => 'sample-cars',
@@ -103,7 +133,7 @@ class OlxCategoriesSeeder extends Seeder
                 }
             }
 
-            $this->command->info('✅ Seeding completed successfully!');
+            $this->command->info('✅ Local seeding completed successfully!');
             $this->command->table(
                 ['Metric', 'Count'],
                 [
@@ -112,7 +142,6 @@ class OlxCategoriesSeeder extends Seeder
                     ['Options synced', $optionsSynced],
                 ]
             );
-
         } catch (\Throwable $e) {
             $this->command->error('❌ Seeder failed: ' . $e->getMessage());
             Log::error('OlxCategoriesSeeder failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);

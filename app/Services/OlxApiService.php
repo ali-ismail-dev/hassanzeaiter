@@ -1,84 +1,90 @@
 <?php
 
-// app/Services/OlxApiService.php
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Exception;
 use Illuminate\Http\Client\RequestException;
 
 class OlxApiService
 {
-    private const CATEGORIES_ENDPOINT = 'https://www.olx.com.lb/api/categories/';
+    private const CATEGORIES_ENDPOINT = 'https://www.olx.com.lb/api/categories';
     private const CATEGORY_FIELDS_ENDPOINT = 'https://www.olx.com.lb/api/categoryFields';
-    private const CACHE_TTL = 86400; // 24 hours in seconds
+    private const CACHE_TTL = 86400; // 24 hours
     private const TIMEOUT = 30; // seconds
 
-    /**
-     * Fetch all categories from OLX API with caching.
-     */
+    public function fetchCategories(bool $forceRefresh = false): array
+    {
+        $cacheKey = 'olx_categories';
 
-public function fetchCategories(bool $forceRefresh = false): array
-{
-    $cacheKey = 'olx_categories';
-
-    if ($forceRefresh) {
-        Cache::forget($cacheKey);
-    }
-
-    return Cache::remember($cacheKey, self::CACHE_TTL, function () {
-        try {
-            Log::info('Fetching categories from OLX API');
-
-            $response = Http::timeout(self::TIMEOUT)
-                ->retry(3, 1000)
-                ->withHeaders([
-                    'User-Agent' => 'Mozilla/5.0 (Laravel Sync)',
-                    'Accept' => 'application/json',
-                ])
-                ->get(self::CATEGORIES_ENDPOINT);
-
-            if (!$response->successful()) {
-                // Log and return empty array instead of throwing
-                Log::warning('OLX categories request failed', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
-                return [];
-            }
-
-            $data = $response->json();
-
-            if (!isset($data['data'])) {
-                Log::warning('OLX categories response missing data key', ['body' => $data]);
-                return [];
-            }
-
-            Log::info('Successfully fetched ' . count($data['data']) . ' categories');
-
-            return $data['data'];
-        } catch (RequestException $e) {
-            Log::error('HTTP RequestException fetching categories', [
-                'message' => $e->getMessage(),
-            ]);
-            return [];
-        } catch (\Throwable $e) {
-            Log::error('Unexpected error fetching categories', [
-                'message' => $e->getMessage(),
-            ]);
-            return [];
+        if ($forceRefresh) {
+            Cache::forget($cacheKey);
         }
-    });
-}
 
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () {
+            try {
+                Log::info('Fetching categories from OLX API');
+
+                $response = Http::timeout(self::TIMEOUT)
+                    ->retry(3, 1000)
+                    ->withHeaders([
+                        'User-Agent' => 'Laravel-OLX-Sync/1.0',
+                        'Accept' => 'application/json',
+                    ])
+                    ->get(self::CATEGORIES_ENDPOINT);
+
+                Log::debug('OLX categories response', [
+                    'status' => $response->status(),
+                    'body_snippet' => is_string($response->body()) ? mb_substr($response->body(), 0, 2000) : null,
+                ]);
+
+                if (!$response->successful()) {
+                    Log::warning('OLX categories request failed', ['status' => $response->status()]);
+                    return [];
+                }
+
+                $data = $response->json();
+                if (!is_array($data)) {
+                    Log::warning('OLX categories returned non-array response', ['type' => gettype($data)]);
+                    return [];
+                }
+
+                // The API returns an array of categories directly (no 'data' wrapper at root level)
+                // If it's wrapped in a 'data' key, unwrap it; otherwise use as-is
+                if (isset($data['data']) && is_array($data['data'])) {
+                    return $data['data'];
+                }
+                
+                // Check if this is already an array of category objects (has 'id' and 'name' properties)
+                if (count($data) > 0 && isset($data[0]['id'])) {
+                    return $data;
+                }
+
+                Log::warning('OLX categories returned unexpected structure', ['body' => $data]);
+                return [];
+            } catch (RequestException $e) {
+                Log::error('HTTP RequestException fetching categories', ['message' => $e->getMessage()]);
+                return [];
+            } catch (\Throwable $e) {
+                Log::error('Unexpected error fetching categories', ['message' => $e->getMessage()]);
+                return [];
+            }
+        });
+    }
 
     /**
      * Fetch category fields for specific category IDs with caching.
+     * Returns an associative array keyed by external category id.
      */
     public function fetchCategoryFields(array $categoryExternalIds, bool $forceRefresh = false): array
     {
+        // sanitize ids
+        $categoryExternalIds = array_values(array_filter(array_map(fn($v) => is_scalar($v) ? trim((string)$v) : null, $categoryExternalIds)));
+        if (empty($categoryExternalIds)) {
+            return [];
+        }
+
         $cacheKey = 'olx_category_fields_' . md5(implode(',', $categoryExternalIds));
 
         if ($forceRefresh) {
@@ -88,13 +94,15 @@ public function fetchCategories(bool $forceRefresh = false): array
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($categoryExternalIds) {
             try {
                 $categoryIdsString = implode(',', $categoryExternalIds);
-                
-                Log::info('Fetching category fields from OLX API', [
-                    'categories' => $categoryIdsString,
-                ]);
+
+                Log::info('Fetching category fields from OLX API', ['categories' => $categoryIdsString]);
 
                 $response = Http::timeout(self::TIMEOUT)
                     ->retry(3, 1000)
+                    ->withHeaders([
+                        'User-Agent' => 'Laravel-OLX-Sync/1.0',
+                        'Accept' => 'application/json',
+                    ])
                     ->get(self::CATEGORY_FIELDS_ENDPOINT, [
                         'categoryExternalIDs' => $categoryIdsString,
                         'includeWithoutCategory' => 'true',
@@ -104,54 +112,67 @@ public function fetchCategories(bool $forceRefresh = false): array
                         'flat' => 'true',
                     ]);
 
+                Log::debug('OLX categoryFields response', [
+                    'status' => $response->status(),
+                    'body_snippet' => is_string($response->body()) ? mb_substr($response->body(), 0, 2000) : null,
+                ]);
+
                 if (!$response->successful()) {
-                    throw new Exception("OLX API returned status: {$response->status()}");
+                    Log::warning('OLX categoryFields request failed', ['status' => $response->status()]);
+                    return [];
                 }
 
                 $data = $response->json();
-
-                if (!isset($data['data'])) {
-                    throw new Exception('Invalid response structure from OLX API');
+                
+                // The API response structure is:
+                // {
+                //   "9": {
+                //     "model": { attribute: "model", filterType: "...", choices: {...} },
+                //     "make": { attribute: "make", filterType: "...", choices: {...} },
+                //     ...
+                //   },
+                //   "70": { ... },
+                //   ...
+                // }
+                
+                if (!is_array($data)) {
+                    Log::warning('OLX categoryFields returned non-array response');
+                    return [];
                 }
 
-                Log::info('Successfully fetched category fields', [
-                    'categories_count' => count($data['data']),
-                ]);
+                // Normalize to map[externalId] => fields
+                $result = [];
+                foreach ($data as $externalId => $categoryFieldsData) {
+                    if (is_array($categoryFieldsData)) {
+                        $result[(string)$externalId] = $categoryFieldsData;
+                    }
+                }
 
-                return $data['data'];
-            } catch (Exception $e) {
-                Log::error('Failed to fetch category fields from OLX API', [
-                    'error' => $e->getMessage(),
-                    'categories' => implode(',', $categoryExternalIds),
-                ]);
-                throw $e;
+                Log::debug('CategoryFields result', ['resultKeys' => array_keys($result), 'count' => count($result)]);
+                return $result;
+            } catch (RequestException $e) {
+                Log::error('HTTP RequestException fetching category fields', ['message' => $e->getMessage()]);
+                return [];
+            } catch (\Throwable $e) {
+                Log::error('Unexpected error fetching category fields', ['message' => $e->getMessage()]);
+                return [];
             }
         });
     }
 
-    /**
-     * Fetch fields for a single category.
-     */
     public function fetchFieldsForCategory(string $categoryExternalId, bool $forceRefresh = false): array
     {
-        $allFields = $this->fetchCategoryFields([$categoryExternalId], $forceRefresh);
-        return $allFields[$categoryExternalId] ?? [];
+        $all = $this->fetchCategoryFields([$categoryExternalId], $forceRefresh);
+        return $all[$categoryExternalId] ?? [];
     }
 
-    /**
-     * Clear all OLX API caches.
-     */
     public function clearCache(): void
     {
         Cache::forget('olx_categories');
-        
-        // Clear all category fields caches (you might want to track these keys)
-        Log::info('Cleared OLX API caches');
+        // Note: category fields caches are keyed per idset; clearing all would require tracking keys.
+        Log::info('Cleared OLX API cache (categories)');
     }
 
-    /**
-     * Map OLX field type to our internal field type.
-     */
     public function mapFieldType(string $olxType): string
     {
         return match (strtolower($olxType)) {
